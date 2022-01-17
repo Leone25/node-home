@@ -1,0 +1,24 @@
+{
+  "name": "node-home",
+  "version": "1.0.0",
+  "description": "Smart home powered by node.js",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon --inspect --trace-warnings index.js",
+    "run": "node index.js"
+  },
+  "author": "Enrico",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "express": "^4.17.2",
+    "node-json-db": "^1.4.1",
+    "nodemon": "^2.0.15",
+    "socket.io": "^4.4.1"
+  },
+  "nodemonConfig": {
+    "ignore": [
+      "databases/*"
+    ]
+  }
+}
