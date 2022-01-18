@@ -24,10 +24,10 @@ exports.modules = {};
 
 fs.readdirSync("./modules").forEach(module => {
     if (!module.endsWith('.ignore') && fs.lstatSync(`./modules/${module}`).isDirectory() && fs.lstatSync(`./modules/${module}/index.js`, {throwIfNoEntry: false})?.isFile()) {
-        log("info", `Loading ${module.endsWith('.perm') ? module.substring(0, module.length-5) : module} module`);
-        exports.modules[module.endsWith('.perm') ? module.substring(0, module.length-5) : module] = require(`./modules/${module}/index.js`);
+        log("info", `Loading ${module.endsWith('.std') ? module.substring(0, module.length-5) : module} module`);
+        exports.modules[module.endsWith('.std') ? module.substring(0, module.length-5) : module] = require(`./modules/${module}/index.js`);
     } else {
-        log("issue", `Ignoring ${module.endsWith('.perm') ? module.substring(0, module.length-5) : module} module`);
+        log("issue", `Ignoring ${module.endsWith('.std') ? module.substring(0, module.length-5) : module} module`);
     }
 });
 
