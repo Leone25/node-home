@@ -1,5 +1,6 @@
 # Config
-config.json
+config.js
+package-lock.json
 
 # Logs
 logs
