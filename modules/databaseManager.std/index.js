@@ -22,6 +22,10 @@ main.on('init', () => {
             }
         });
     };
+    exports.databases.get = (database) => {
+        if (!exports.databases[database]) exports.databases.add(database);
+        return exports.databases[database];
+    };
 
     // load all databases from ./databases
     fs.readdirSync('./databases').forEach(database => {

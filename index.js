@@ -1,6 +1,6 @@
 const config = require('./config');
 
-const log = require('./logger');
+const log = require('./src/logger');
 const fs = require('fs');
 const express = require('express');
 const app = express();
@@ -24,10 +24,10 @@ exports.modules = {};
 
 fs.readdirSync("./modules").forEach(module => {
     if (!module.endsWith('.ignore') && fs.lstatSync(`./modules/${module}`).isDirectory() && fs.lstatSync(`./modules/${module}/index.js`, {throwIfNoEntry: false})?.isFile()) {
-        log("info", `Loading ${module.endsWith('.std') ? module.substring(0, module.length-5) : module} module`);
-        exports.modules[module.endsWith('.std') ? module.substring(0, module.length-5) : module] = require(`./modules/${module}/index.js`);
+        log("info", `Loading ${module.endsWith('.std') ? module.substring(0, module.length-4) : module} module`);
+        exports.modules[module.endsWith('.std') ? module.substring(0, module.length-4) : module] = require(`./modules/${module}/index.js`);
     } else {
-        log("issue", `Ignoring ${module.endsWith('.std') ? module.substring(0, module.length-5) : module} module`);
+        log("issue", `Ignoring ${module.endsWith('.std') ? module.substring(0, module.length-4) : module} module`);
     }
 });
 
