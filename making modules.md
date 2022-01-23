@@ -26,9 +26,9 @@ const EventEmitter = main.CreateEventEmitter(exports);
 
 main.on('init', () => {
     main.modules.deviceManager.on('ready', (deviceManager) => {
-        deviceManager.registerDevice({
+        deviceManager.connect({
             name: 'Awesome Button',
-            brand: 'Foo',
+            module: 'foo',
             type: ['input'],
         });
     });
