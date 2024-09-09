@@ -1,6 +1,7 @@
 # Config
 server/config.js
 package-lock.json
+db.sqlite
 
 # Logs
 logs

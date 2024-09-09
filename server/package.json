@@ -20,5 +20,6 @@
 		"ignore": [
 			"db.sqlite"
 		]
-	}
+	},
+	"type": "module"
 }

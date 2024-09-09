@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 
-import { EventEmitter } from './EventEmitter.js';
+import EventEmitter from './EventEmitter.js';
 
 import { db } from './index.js';
 
