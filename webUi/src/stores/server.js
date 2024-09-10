@@ -30,6 +30,22 @@ export const useServer = defineStore('server', {
 				return false;
 			}
 		},
+		async login(username, password) {
+			let request = await fetch('/api/v1/user/sessions/new', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({username, password})
+			});
+			if (!request.ok) {
+				throw new Error('Could not login');
+			}
+			let session = await request.json();
+			localStorage.setItem('nodeHomeAuthorization', session.authorization);
+			localStorage.setItem('nodeHomeSessionId', session.id);
+			this.session = session;
+		},
 		async createUser(username, password) {
 			let request = await fetch('/api/v1/users/new', {
 				method: 'POST',
@@ -39,7 +55,11 @@ export const useServer = defineStore('server', {
 				body: JSON.stringify({username, password})
 			});
 			if (!request.ok) {
-				throw new Error('Could not create user');
+				if (request.headers.get('Content-Type') === 'application/json') {
+					let error = await request.json();
+					throw new Error(error.error);
+				}
+				throw new Error(`Could not create user (${request.status} - ${request.statusText})`);
 			}
 			return await request.json();
 		}

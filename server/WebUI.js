@@ -104,7 +104,7 @@ export default class WebUI extends BaseExtension {
             let token = crypto.randomBytes(22).toString('base64'); // token used for authentication
             let expires = Date.now() + 30000 * 60 * 60 * 24; // 30 day
 
-            db.prepare('INSERT INTO sessions (id, user_id, token, expires, description) VALUES (?, ?, ?, ?)').run(id, user.id, token, expires, req.body.description || req.headers['user-agent']);
+            db.prepare('INSERT INTO sessions (id, user_id, token, expires, description) VALUES (?, ?, ?, ?, ?)').run(id, user.id, token, expires, req.body.description || req.headers['user-agent']);
 
             res.json({ id: id, token: token, user: user.name, expires: expires });
         });
@@ -168,11 +168,11 @@ export default class WebUI extends BaseExtension {
             }
             
             let id = crypto.randomBytes(8).toString('hex');
-            let password = await bcrypt.sync(req.body.password, 10);
+            let password = await bcrypt.hash(req.body.password, 10);
             
             db.prepare('INSERT INTO users (id, name, password) VALUES (?, ?, ?)').run(id, req.body.username, password);
             if (!userExists) {
-                db.prepare('INSERT INTO users_roles (user_id, role_id, active) VALUES (?, "admin", 1)').run(id);
+                db.prepare('INSERT INTO users_roles (user_id, role_id, active) VALUES (?, \'admin\', 1)').run(id);
             } else if (req.body.roles) {
                 for (let role of req.body.roles) {
                     db.prepare('INSERT INTO users_roles (user_id, role_id, active) VALUES (?, ?, 1)').run(id, role);
