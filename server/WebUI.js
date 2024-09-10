@@ -32,11 +32,12 @@ export default class WebUI extends BaseExtension {
             
             let roles = db.prepare('SELECT * FROM users_roles JOIN roles ON users_roles.role_id = roles.id WHERE user_id = ? AND active = 1').all(session.user_id);
             session.roles = roles;
-            session.isAdmin = roles.find(r => r.id === 'admin');
+            session.isAdmin = roles.findIndex(r => r.id === 'admin') !== -1;
 
             console.log(session); // ! TEMP
 
             req.session = session;
+			next();
         });
         
         this.loggedIn = Router({ mergeParams: true });
@@ -69,7 +70,7 @@ export default class WebUI extends BaseExtension {
 		this.router.get('/ping', async (req, res) => {
 			res.json({ success: true });
 		});
-		this.router.get('/server', async (req, res) => {
+		this.router.get('/server/state', async (req, res) => {
 			let hasUsers = db.prepare('SELECT * FROM users LIMIT 1').get();
 			res.json({
 				version: "0.0.1",
@@ -78,7 +79,15 @@ export default class WebUI extends BaseExtension {
 		});
 		// #endregion
         // #region user
-        this.loggedIn.get('/user/sessions', async (req, res) => {
+        this.router.get('/user/sessions/current', async (req, res) => {
+			if (!req.session) {
+				res.status(401).json({ error: "Unauthorized" });
+				return;
+			}
+			res.json(req.session);
+		});
+		
+		this.loggedIn.get('/user/sessions', async (req, res) => {
             res.json(db.prepare('SELECT * FROM sessions WHERE user_id = ?').all(req.session.user_id).map(s => { return { id: s.id, token: s.token, expires: s.expires, description: s.description } }));
         });
 
@@ -95,6 +104,7 @@ export default class WebUI extends BaseExtension {
             }
 
             if (!(await bcrypt.compare(req.body.password, user.password))) {
+				await new Promise(resolve => setTimeout(resolve, 1000)); // delay to prevent brute force
                 res.status(401).json({ error: "Invalid password" });
                 return;
             }
