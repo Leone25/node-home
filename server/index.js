@@ -31,6 +31,7 @@ export const io = new Server(httpServer, {
 	}, 
 });
 export const core = new Core();
+core.init();
 
 
 httpServer.listen(config.port, () => {

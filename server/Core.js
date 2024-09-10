@@ -5,6 +5,7 @@ import EventEmitter from './EventEmitter.js';
 import { db } from './index.js';
 
 import HttpDevice from './HttpDevice.js';
+import WebUI from "./WebUI.js";
 
 export class Core extends EventEmitter {
     constructor() {
@@ -12,15 +13,16 @@ export class Core extends EventEmitter {
 
         this.extensions = {
             http: new HttpDevice(),
+			webUi: new WebUI(),
         };
 
         this.devices = {};
     }
 
-    init() {
+    async init() {
         this.initDb();
         for (let extension in this.extensions) {
-            if (this.extensions[extension].mount) this.extensions[extension].mount();
+            if (this.extensions[extension].mount) await this.extensions[extension].mount();
         }
         this.getDevicesList().forEach(device => {
             if (this.extensions[device.type]) {

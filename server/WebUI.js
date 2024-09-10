@@ -64,10 +64,19 @@ export default class WebUI extends BaseExtension {
                 res.status(403).json({ error: "Unauthorized" });
             }
         });
-        
-        this.router.use(this.loggedIn);
-        this.loggedIn.use(this.admin);
         // #endregion
+		// #region server
+		this.router.get('/ping', async (req, res) => {
+			res.json({ success: true });
+		});
+		this.router.get('/server', async (req, res) => {
+			let hasUsers = db.prepare('SELECT * FROM users LIMIT 1').get();
+			res.json({
+				version: "0.0.1",
+				hasUsers: !!hasUsers,
+			});
+		});
+		// #endregion
         // #region user
         this.loggedIn.get('/user/sessions', async (req, res) => {
             res.json(db.prepare('SELECT * FROM sessions WHERE user_id = ?').all(req.session.user_id).map(s => { return { id: s.id, token: s.token, expires: s.expires, description: s.description } }));
@@ -290,6 +299,9 @@ export default class WebUI extends BaseExtension {
             }
         });
         // #endregion
+
+        this.router.use(this.loggedIn);
+        this.loggedIn.use(this.admin);
     }
 
     async mount() {
