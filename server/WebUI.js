@@ -18,7 +18,7 @@ export default class WebUI extends BaseExtension {
                 return;
             }
             
-            let session = db.prepare('SELECT * FROM sessions JOIN users ON sessions.user_id = users.id WHERE token = ?').get(req.headers.authorization);
+            let session = db.prepare('SELECT sessions.id AS device_id, * FROM sessions JOIN users ON sessions.user_id = users.id WHERE token = ?').get(req.headers.authorization);
             if (!session) {
                 next();
                 return;
@@ -31,12 +31,10 @@ export default class WebUI extends BaseExtension {
             }
             
             let roles = db.prepare('SELECT * FROM users_roles JOIN roles ON users_roles.role_id = roles.id WHERE user_id = ? AND active = 1').all(session.user_id);
-            session.roles = roles;
-            session.isAdmin = roles.findIndex(r => r.id === 'admin') !== -1;
+            req.session = Session.fromDB(session, roles);
 
-            console.log(session); // ! TEMP
+            console.log(req.session); // ! TEMP
 
-            req.session = session;
 			next();
         });
         
@@ -48,7 +46,7 @@ export default class WebUI extends BaseExtension {
                 return;
             }
             
-            if (req.session.blocked === 1) {
+            if (req.session.blocked) {
                 res.status(423).json({ error: "User blocked" });
                 return;
             }
@@ -79,16 +77,20 @@ export default class WebUI extends BaseExtension {
 		});
 		// #endregion
         // #region user
-        this.router.get('/user/sessions/current', async (req, res) => {
-			if (!req.session) {
-				res.status(401).json({ error: "Unauthorized" });
-				return;
-			}
+        this.loggedIn.get('/user/sessions/current', async (req, res) => {
 			res.json(req.session);
 		});
 		
 		this.loggedIn.get('/user/sessions', async (req, res) => {
-            res.json(db.prepare('SELECT * FROM sessions WHERE user_id = ?').all(req.session.user_id).map(s => { return { id: s.id, token: s.token, expires: s.expires, description: s.description } }));
+            res.json(db.prepare('SELECT * FROM sessions WHERE user_id = ?').all(req.session.userId).map(s => {
+				let session = Session.fromDB(s).toJSON();
+				delete session.userId;
+				delete session.name;
+				delete session.blocked;
+				delete session.roles;
+				delete session.isAdmin;
+				return session;
+			}));
         });
 
         this.router.post('/user/sessions/new', async (req, res) => { // AKA login
@@ -123,13 +125,13 @@ export default class WebUI extends BaseExtension {
             let token = crypto.randomBytes(22).toString('base64');
             let expires = Date.now() + 30000 * 60 * 60 * 24; // 30 day
             
-            db.prepare('UPDATE sessions SET token = ?, expires = ? WHERE id = ?').run(token, expires, req.session.id);
+            db.prepare('UPDATE sessions SET token = ?, expires = ? WHERE id = ?').run(token, expires, req.session.deviceId);
             
-            res.json({ id: req.session.id, token: token, user: req.session.name, expires: expires });
+            res.json({ id: req.session.deviceId, token: token, user: req.session.name, expires: expires });
         });
         
         this.loggedIn.delete('/user/sessions', async (req, res) => {
-            db.prepare('DELETE FROM sessions WHERE id = ?').run(req.session.id);
+            db.prepare('DELETE FROM sessions WHERE id = ?').run(req.session.userId);
             res.json({ success: true });
         });
 
@@ -139,7 +141,7 @@ export default class WebUI extends BaseExtension {
                 res.status(404).json({ error: "Session not found" });
                 return;
             }
-            if (session.user_id !== req.session.user_id) {
+            if (session.user_id !== req.session.userId) {
                 res.status(403).json({ error: "Unauthorized" });
                 return;
             }
@@ -265,7 +267,7 @@ export default class WebUI extends BaseExtension {
         // #endregion
         // #region notifications
         this.router.get('/notifications/new', async (req, res) => { // this is an unsecure endpoint that only tells the client if there are new notifications, to retreive them the client must use /notifications with authorization
-            let notifications = db.prepare('SELECT * FROM notifications_delivery JOIN notifications_to ON notifications_delivery.notification_id = notifications_to.notification_id WHERE session_id = ? AND delivered = 0 AND knows_read != read LIMIT 1').get(req.headers.deviceId || req.session.id);
+            let notifications = db.prepare('SELECT * FROM notifications_delivery JOIN notifications_to ON notifications_delivery.notification_id = notifications_to.notification_id WHERE session_id = ? AND delivered = 0 AND knows_read != read LIMIT 1').get(req.headers.deviceId || req.session.deviceId);
             if (!notifications) {
                 res.json({ updates: false });
             } else {
@@ -355,4 +357,76 @@ export default class WebUI extends BaseExtension {
     async sendNotification(notification) {
         //
     }
+}
+
+class Session {
+	constructor(userId, name, deviceId, token, expires, description, hasUndeliveredNotifications, password, blocked, roles) {
+		this.userId = userId;
+		this.name = name;
+		this.deviceId = deviceId;
+		this.token = token;
+		this.expires = expires;
+		this.description = description;
+		this.hasUndeliveredNotifications = hasUndeliveredNotifications;
+		this.password = password;
+		this.blocked = blocked;
+		this.roles = roles;
+	}
+
+	static fromDB(data, roles) {
+		let params = [
+			data.user_id,
+			data.name,
+			data.device_id,
+			data.token,
+			data.expires,
+			data.description,
+			data.has_undelivered_notifications == 1,
+			data.password,
+			data.blocked == 1
+		];
+		if (roles) {
+			params.push(roles.map(r => {
+				return {
+					id: r.role_id,
+					name: r.name,
+					canBeToggled: r.can_be_toggled == 1,
+					active: r.active == 1,
+				}
+			}));
+		}
+		return new Session(...params);
+	}
+
+	get isAdmin() {
+		if (!this.roles) return false;
+		let role = this.roles.find(r => r.id === 'admin');
+		return role && role.active;
+	}
+
+	get expiresIn() {
+		return this.expires - Date.now();
+	}
+
+	get expired() {
+		return this.expires < Date.now();
+	}
+
+	toJSON() {
+		let res = {
+			userId: this.userId,
+			name: this.name,
+			deviceId: this.deviceId,
+			expires: this.expires,
+			description: this.description,
+			hasUndeliveredNotifications: this.hasUndeliveredNotifications,
+			blocked: this.blocked,
+			isAdmin: this.isAdmin,
+			expiresIn: this.expiresIn,
+		};
+		if (this.roles) {
+			res.roles = this.roles;
+		}
+		return res;
+	}
 }

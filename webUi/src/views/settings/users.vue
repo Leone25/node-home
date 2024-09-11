@@ -10,11 +10,7 @@ export default {
 		}
 	},
 	methods: {
-		...mapActions(useServer, ['getUsers']),
-		async getUsers() {
-			const response = await fetch('http://localhost:3000/users')
-			this.users = await response.json()
-		}
+		...mapActions(useServer, ['getUsers'])
 	},
 	mounted() {
 		this.users = this.getUsers();
