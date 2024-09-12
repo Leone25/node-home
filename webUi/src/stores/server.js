@@ -2,8 +2,11 @@ import { defineStore } from "pinia";
 
 export const useServer = defineStore('server', {
 	state: () => ({
+		isSessionValid: null,
 		serverState: null,
 		session: null,
+		authorization: null,
+		sessionId: null,
 	}),
 	getters: {
 		isAuthenticated() {
@@ -14,8 +17,8 @@ export const useServer = defineStore('server', {
 		makeRequest(method, path, body) {
 			let abort = new AbortController();
 			let headers = {};
-			if (this.session) {
-				headers.Authorization = this.session.authorization;
+			if (this.authorization) {
+				headers.Authorization = this.authorization;
 			}
 			if (body) {
 				headers['Content-Type'] = 'application/json';
@@ -44,22 +47,27 @@ export const useServer = defineStore('server', {
 			this.serverState = await request.json();
 		},
 		async verifySession() {
-			let authorization = localStorage.getItem('nodeHomeAuthorization');
-			let sessionId = localStorage.getItem('nodeHomeSessionId');
-			if (authorization && sessionId) {
-				this.session = {authorization, id: sessionId};
+			this.authorization = localStorage.getItem('nodeHomeAuthorization');
+			this.sessionId = localStorage.getItem('nodeHomeSessionId');
+			if (this.authorization && this.sessionId) {
 				try {
 					let [request] = this.makeRequest('GET', '/user/sessions/current');
 					request = await request;
 					this.session = await request.json();
+					this.isSessionValid = true;
 					return true;
 				} catch (e) {
 					localStorage.removeItem('nodeHomeAuthorization');
 					localStorage.removeItem('nodeHomeSessionId');
-					this.session = null;
+					this.authorization = null;
+					this.sessionId = null;
+					this.isSessionValid = false;
 					return false;
 				}
 			}
+			this.authorization = null;
+			this.sessionId = null;
+			this.isSessionValid = false;
 			return false;
 		},
 		async login(username, password) {

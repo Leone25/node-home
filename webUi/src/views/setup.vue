@@ -20,25 +20,9 @@ export default {
 		...mapState(useServer, ['isAuthenticated', 'serverState']),
 	},
 	watch: {
-		isAuthenticated: {
-			handler() {
-				if (this.isAuthenticated) {
-					this.$router.push('/');
-				}
-			},
-			immediate: true,
-		},
-		'serverState.hasUsers': {
-			handler() {
-				if (this.serverState && this.serverState.hasUsers) {
-					this.$router.push('/');
-				}
-			},
-			immediate: true,
-		}
 	},
 	methods: {
-		...mapActions(useServer, ['createUser', 'login']),
+		...mapActions(useServer, ['createUser', 'getServerState', 'login']),
 		async handleModelChange(value) {
 			try {
 				if (value === 3) {
@@ -60,6 +44,7 @@ export default {
 						throw 'Passwords do not match';
 					}
 					await this.createUser(this.firstUser.username, this.firstUser.password);
+					await this.getServerState();
 					await this.login(this.firstUser.username, this.firstUser.password);
 					this.loading = false;
 				}

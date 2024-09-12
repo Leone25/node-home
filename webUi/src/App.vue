@@ -7,25 +7,7 @@ import { mapState, mapActions } from 'pinia';
 export default {
 	data() {
 		return {
-			isLoading: true,
 		};
-	},
-	async mounted() {
-		await this.getServerState();
-		if (!this.serverState.hasUsers) {
-			this.$router.push('/setup');
-		} else {
-			if (await this.verifySession()) {
-				this.isLoading = false;
-			} else {
-				this.$router.push('/login');
-			}
-		}
-	},
-	watch: {
-		'$route': function() {
-			this.isLoading = false;
-		},
 	},
 	computed: {
 		...mapState(useServer, ['serverState']),

@@ -2,12 +2,15 @@ import BaseExtension, { BaseDevice } from './BaseExtension.js';
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import crypto from "node:crypto";
+import fs from 'fs/promises';
 
 import { argv, app, core, db } from './index.js';
 
 export default class WebUI extends BaseExtension {
     constructor() {
         super();
+
+		this.serverState = {};
         
         // #region router setup
         this.router = Router({ mergeParams: true });
@@ -32,8 +35,6 @@ export default class WebUI extends BaseExtension {
             
             let roles = db.prepare('SELECT * FROM users_roles JOIN roles ON users_roles.role_id = roles.id WHERE user_id = ? AND active = 1').all(session.user_id);
             req.session = Session.fromDB(session, roles);
-
-            console.log(req.session); // ! TEMP
 
 			next();
         });
@@ -71,7 +72,7 @@ export default class WebUI extends BaseExtension {
 		this.router.get('/server/state', async (req, res) => {
 			let hasUsers = db.prepare('SELECT * FROM users LIMIT 1').get();
 			res.json({
-				version: "0.0.1",
+				...this.serverState,
 				hasUsers: !!hasUsers,
 			});
 		});
@@ -342,6 +343,21 @@ export default class WebUI extends BaseExtension {
                 res.sendFile("../webUi/dist/index.html");
             });
         }
+
+		fs.readFile('../package.json', 'utf8').then(data => {
+			this.serverState.version = JSON.parse(data).version;
+		}).catch(() => {
+			this.serverState.version = undefined;
+		});
+		fs.readFile('../.git/HEAD', 'utf8').then(async data => {
+			data = data.toString().trim();
+			if (data.startsWith('ref: ')) {
+				data = (await fs.readFile(`../.git/${data.substring(5)}`, 'utf8')).toString().trim();
+			}
+			this.serverState.commit = data;
+		}).catch((err) => {
+			this.serverState.commit = undefined;
+		});
 
         super.mount();
     }
