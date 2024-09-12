@@ -1,4 +1,4 @@
-import BaseExtension, { BaseDevice } from './BaseExtension.js';
+import BaseExtension from './BaseExtension.js';
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import crypto from "node:crypto";
@@ -152,7 +152,26 @@ export default class WebUI extends BaseExtension {
         // #endregion
         // #region users
         this.admin.get('/users', async (req, res) => {
-            res.json(db.prepare('SELECT * FROM users').all());
+            let users = db.prepare('SELECT id, name, blocked FROM users').all();
+			let assignedRoles = db.prepare('SELECT * FROM users_roles').all();
+			let roles = db.prepare('SELECT * FROM roles').all();
+			res.json(users.map(u => {
+				let userRoles = assignedRoles.filter(r => r.user_id === u.id).map(r => {
+					let role = roles.find(role => role.id === r.role_id);
+					return {
+						id: role.id,
+						name: role.name,
+						canBeToggled: role.can_be_toggled == 1,
+						active: r.active == 1,
+					};
+				});
+				return {
+					id: u.id,
+					name: u.name,
+					blocked: u.blocked == 1,
+					roles: userRoles,
+				};
+			}));
         });
         
         this.router.post('/users/new', async (req, res) => { // AKA register
@@ -321,7 +340,7 @@ export default class WebUI extends BaseExtension {
         db.prepare(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, password TEXT, blocked INTEGER)`).run();
         db.prepare(`CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT, token TEXT, expires INTEGER, description TEXT, has_undelivered_notifications INTEGER, FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE, UNIQUE(token))`).run();
         db.prepare(`CREATE TABLE IF NOT EXISTS roles (id TEXT PRIMARY KEY, name TEXT, can_be_toggled INTEGER)`).run();
-        db.prepare(`CREATE TABLE IF NOT EXISTS users_roles (user_id TEXT, role_id TEXT, active INTEGER, FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE CASCADE)`).run();
+        db.prepare(`CREATE TABLE IF NOT EXISTS users_roles (user_id TEXT, role_id TEXT, active INTEGER, PRIMARY KEY(user_id, role_id), FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE CASCADE)`).run();
         db.prepare(`INSERT OR IGNORE INTO roles (id, name, can_be_toggled) VALUES ('admin', 'Administrator', 0)`).run();
         db.prepare(`INSERT OR IGNORE INTO roles (id, name, can_be_toggled) VALUES ('user', 'User', 0)`).run();
         db.prepare(`CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, type TEXT, title TEXT, message TEXT, time INTEGER, extra TEXT, deleted INTEGER DEFAULT 0)`).run();

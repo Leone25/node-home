@@ -1,17 +1,5 @@
 <script setup>
 import { RouterView } from 'vue-router';
-
-/**
-	<v-sheet class="bg-blue-grey-darken-4 pa-12 d-flex align-stretch h-100" rounded>
-		<router-view v-slot="{ Component, route }">
-			<v-sheet class="mx-auto px-4 py-3" elevation="4" max-width="800" width="100%" rounded
-				transition="scroll-x-reverse-transition">
-				<component :is="Component" :key="route.params" />
-			</v-sheet>
-		</router-view>
-	</v-sheet>
- */
-
 </script>
 
 <template>

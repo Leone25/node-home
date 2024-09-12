@@ -6,7 +6,8 @@ import { mapState, mapActions } from 'pinia';
 export default {
 	data() {
 		return {
-			users: []
+			users: [],
+			search: ''
 		}
 	},
 	methods: {
@@ -19,15 +20,32 @@ export default {
 </script>
 <template>
 	<div class="text-h1 d-flex align-center"><v-icon>mdi-account-edit</v-icon>Users</div>
-	<v-data-table
+	<v-text-field
+        v-model="search"
+        label="Search"
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+        hide-details
+        single-line
+    />
+	<v-data-table-virtual
 		:headers="[
-			{ text: 'Name', value: 'name' },
-			{ text: 'Email', value: 'email' },
-			{ text: 'Role', value: 'role' },
-			{ text: 'Actions', value: 'actions', sortable: false }
+			{ title: 'Name', key: 'name' },
+			{ title: 'Roles', key: 'roles', sortable: false },
+			{ title: 'Edit', key: 'edit', sortable: false, align: 'end' }
 		]"
 		:items="users"
-		:items-per-page="10"
+		:search="search"
 		class="elevation-0"
-	/>
+	>
+	<template #item.roles="{ value: roles }">
+		<v-chip-group>
+			<v-chip v-for="role in roles" :key="role.id" size="small" :text="role.name"/>
+		</v-chip-group>
+	</template>
+	<template #item.edit="{ item }">
+		<v-btn size="x-small" variant="outline" icon="mdi-pencil" />
+	</template>
+	</v-data-table-virtual>
+	<v-btn color="primary" icon="mdi-plus" text="New User" />
 </template>
