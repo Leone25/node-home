@@ -250,13 +250,26 @@ export default class WebUI extends BaseExtension {
         // #endregion
         // #region roles
         this.admin.get('/roles', async (req, res) => {
-            res.json(db.prepare('SELECT roles.*, COUNT(users_roles.user_id) AS users FROM roles LEFT JOIN users_roles ON roles.id = users_roles.role_id GROUP BY roles.id').all());
+            let result = db.prepare('SELECT roles.*, COUNT(users_roles.user_id) AS users FROM roles LEFT JOIN users_roles ON roles.id = users_roles.role_id GROUP BY roles.id').all();
+			res.json(result.map(r => {
+				return {
+					id: r.id,
+					name: r.name,
+					canBeToggled: r.can_be_toggled == 1,
+					users: r.users,
+				};
+			}));
         });
         
         this.admin.get('/roles/:id', async (req, res) => {
             let role = db.prepare('SELECT * FROM roles WHERE id = ?').get(req.params.id);
-            role.users = db.prepare('SELECT * FROM users_roles WHERE role_id = ?').all(req.params.id);
-            res.json(role);
+			let result = {
+				id: role.id,
+				name: role.name,
+				canBeToggled: role.can_be_toggled == 1,
+			};
+            result.users = db.prepare('SELECT * FROM users_roles JOIN users ON users_roles.user_id = users.id WHERE role_id = ?').all(req.params.id);
+            res.json(result);
         });
         
         this.admin.patch('/roles/:id', async (req, res) => {

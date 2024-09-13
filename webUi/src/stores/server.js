@@ -88,6 +88,11 @@ export const useServer = defineStore('server', {
 			let [request] = this.makeRequest('GET', '/users');
 			request = await request;
 			return await request.json();
-		}
+		},
+		async getRoles() {
+			let [request] = this.makeRequest('GET', '/roles');
+			request = await request;
+			return await request.json();
+		},
 	}
 });

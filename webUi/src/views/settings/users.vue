@@ -7,14 +7,27 @@ export default {
 	data() {
 		return {
 			users: [],
-			search: ''
+			roles: [],
+			search: '',
+			editing: {
+				name: '',
+				password: '',
+				roles: []
+			}
 		}
 	},
 	methods: {
-		...mapActions(useServer, ['getUsers'])
+		...mapActions(useServer, ['getUsers', 'getRoles']),
+		rolesProps(role) {
+			return {
+				title: role.name,
+				value: role.id
+			}
+		}
 	},
 	async mounted() {
-		this.users = await this.getUsers();
+		this.getUsers().then(users => this.users = users);
+		this.getRoles().then(roles => this.roles = roles);
 	}
 }
 </script>
@@ -44,8 +57,32 @@ export default {
 		</v-chip-group>
 	</template>
 	<template #item.edit="{ item }">
-		<v-btn size="x-small" variant="outline" icon="mdi-pencil" />
+		<v-btn size="x-small" variant="flat" icon="mdi-pencil" />
 	</template>
 	</v-data-table-virtual>
-	<v-btn color="primary" icon="mdi-plus" text="New User" />
+	<v-dialog max-width="600">
+		<template #activator="{ props: activatorProps }">
+			<v-btn v-bind="activatorProps" class="position-absolute bottom-0 right-0" color="primary" icon="mdi-plus" />
+		</template>
+
+		<v-card>
+			<v-card-title>Add User</v-card-title>
+			<v-card-text>
+				<v-text-field label="Name" v-model="editing.name" />
+				<v-text-field label="Password" v-model="editing.password" />
+				<v-select
+					v-model="editing.roles"
+					:items="roles"
+					:items-props="rolesProps"
+					label="Roles"
+					chips
+					multiple
+				/>
+			</v-card-text>
+			<v-card-actions>
+				<v-btn color="primary">Save</v-btn>
+				<v-btn color="error">Cancel</v-btn>
+			</v-card-actions>
+		</v-card>
+	</v-dialog>
 </template>
