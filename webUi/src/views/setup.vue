@@ -43,7 +43,7 @@ export default {
 						this.loading = false;
 						throw 'Passwords do not match';
 					}
-					await this.createUser(this.firstUser.username, this.firstUser.password);
+					await this.createUser({username: this.firstUser.username, password: this.firstUser.password});
 					await this.getServerState();
 					await this.login(this.firstUser.username, this.firstUser.password);
 					this.loading = false;

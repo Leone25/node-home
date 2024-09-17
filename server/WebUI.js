@@ -167,7 +167,7 @@ export default class WebUI extends BaseExtension {
 				});
 				return {
 					id: u.id,
-					name: u.name,
+					username: u.name,
 					blocked: u.blocked == 1,
 					roles: userRoles,
 				};
@@ -181,7 +181,7 @@ export default class WebUI extends BaseExtension {
                     res.status(401).json({ error: "Unauthorized" });
                     return;
                 }
-                if (!req.isAdmin) {
+                if (!req.session.isAdmin) {
                     res.status(403).json({ error: "Unauthorized" });
                     return;
                 }
@@ -201,8 +201,9 @@ export default class WebUI extends BaseExtension {
             
             let id = crypto.randomBytes(8).toString('hex');
             let password = await bcrypt.hash(req.body.password, 10);
+			let blocked = req.body.blocked ? 1 : 0;
             
-            db.prepare('INSERT INTO users (id, name, password) VALUES (?, ?, ?)').run(id, req.body.username, password);
+            db.prepare('INSERT INTO users (id, name, password, blocked) VALUES (?, ?, ?, ?)').run(id, req.body.username, password, blocked);
             if (!userExists) {
                 db.prepare('INSERT INTO users_roles (user_id, role_id, active) VALUES (?, \'admin\', 1)').run(id);
             } else if (req.body.roles) {
@@ -217,6 +218,48 @@ export default class WebUI extends BaseExtension {
         this.admin.get('/users/:id', async (req, res) => {
             res.json(db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id));
         });
+
+		this.admin.patch('/users/:id', async (req, res) => {
+			if ((!req.body.username || req.body.username.length == 0) && (!req.body.password || req.body.password.length == 0) && req.body.blocked === undefined && (!req.body.roles || req.body.roles.length === 0)) {
+				res.status(400).json({ error: "Missing name, password, blocked or roles" });
+				return;
+			}
+
+			let user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+			if (!user) {
+				res.status(404).json({ error: "User not found" });
+				return;
+			}
+
+			if (req.body.username && req.body.username.length != 0 && req.body.username !== user.name) {
+				db.prepare('UPDATE users SET name = ? WHERE id = ?').run(req.body.username, req.params.id);
+			}
+			if (req.body.password && req.body.password.length != 0) {
+				let password = await bcrypt.hash(req.body.password, 10);
+				db.prepare('UPDATE users SET password = ? WHERE id = ?').run(password, req.params.id);
+			}
+			if (req.body.blocked !== undefined) {
+				db.prepare('UPDATE users SET blocked = ? WHERE id = ?').run(req.body.blocked ? 1 : 0, req.params.id);
+			}
+			if (req.body.roles) {
+				let currentRoles = db.prepare('SELECT * FROM users_roles WHERE user_id = ?').all(req.params.id);
+				for (let role of req.body.roles) {
+					let currentRole = currentRoles.find(r => r.role_id === role);
+					if (currentRole) {
+						db.prepare('UPDATE users_roles SET active = 1 WHERE user_id = ? AND role_id = ?').run(req.params.id, role);
+					} else {
+						db.prepare('INSERT INTO users_roles (user_id, role_id, active) VALUES (?, ?, 1)').run(req.params.id, role);
+					}
+				}
+				for (let role of currentRoles) {
+					if (!req.body.roles.includes(role.role_id)) {
+						db.prepare('UPDATE users_roles SET active = 0 WHERE user_id = ? AND role_id = ?').run(req.params.id, role.role_id);
+					}
+				}
+			}
+
+			res.json({ success: true });
+		});
         
         this.admin.post('/users/:id/block', async (req, res) => {
             db.prepare('UPDATE users SET blocked = 1 WHERE id = ?').run(req.params.id);
@@ -247,6 +290,11 @@ export default class WebUI extends BaseExtension {
             }
             res.json({ success: true });
         });
+
+		this.admin.delete('/users/:id', async (req, res) => {
+			db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+			res.json({ success: true });
+		});
         // #endregion
         // #region roles
         this.admin.get('/roles', async (req, res) => {
@@ -358,7 +406,7 @@ export default class WebUI extends BaseExtension {
         db.prepare(`INSERT OR IGNORE INTO roles (id, name, can_be_toggled) VALUES ('user', 'User', 0)`).run();
         db.prepare(`CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, type TEXT, title TEXT, message TEXT, time INTEGER, extra TEXT, deleted INTEGER DEFAULT 0)`).run();
         db.prepare(`CREATE TABLE IF NOT EXISTS notifications_to (notification_id TEXT, user_id TEXT, viewed INTEGER, FOREIGN KEY(notification_id) REFERENCES notifications(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE)`).run();
-        db.prepare(`CREATE TABLE IF NOT EXISTS notifications_delivery (notification_id TEXT, user_id TEXT, session_id TEXT, delivered INTEGER, FOREIGN KEY(notification_id, user_id) REFERENCES notifications_to(notification_id, user_id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(session_id) REFERENCES sessions(id) ON UPDATE CASCADE ON DELETE CASCADE)`).run();
+        db.prepare(`CREATE TABLE IF NOT EXISTS notifications_delivery (notification_id TEXT, user_id TEXT, session_id TEXT, delivered INTEGER, FOREIGN KEY(notification_id, user_id) REFERENCES notifications_to(notification_id, user_id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(session_id) REFERENCES sessions(id) ON UPDATE CASCADE ON DELETE CASCADE, PRIMARY KEY(notification_id, user_id, session_id))`).run();
         db.prepare(`CREATE TRIGGER IF NOT EXISTS notifications_to_insert AFTER INSERT ON notifications_to BEGIN INSERT INTO notifications_delivery (notification_id, user_id, session_id, delivered) VALUES (NEW.notification_id, NEW.user_id, (SELECT id FROM sessions WHERE user_id = NEW.user_id), 0); END`).run();
         db.prepare(`CREATE TRIGGER IF NOT EXISTS notifications_to_update AFTER UPDATE ON notifications_to BEGIN UPDATE notifications_delivery SET delivered = 0 WHERE notification_id = NEW.notification_id AND user_id = NEW.user_id; END`).run();
         db.prepare(`CREATE TRIGGER IF NOT EXISTS notifications_delivery_update AFTER UPDATE ON notifications_delivery BEGIN UPDATE sessions SET has_undelivered_notifications = (SELECT COUNT(*) FROM notifications_delivery WHERE session_id = NEW.session_id AND delivered = 0) WHERE id = NEW.session_id; END`).run();

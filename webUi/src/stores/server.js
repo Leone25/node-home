@@ -77,10 +77,21 @@ export const useServer = defineStore('server', {
 			localStorage.setItem('nodeHomeAuthorization', session.token);
 			localStorage.setItem('nodeHomeSessionId', session.id);
 			this.session = session;
-			console.log(session);
+			this.authorization = session.token;
+			this.sessionId = session.id;
 		},
-		async createUser(username, password) {
-			let [request] = this.makeRequest('POST', '/users/new', {username, password});
+		async createUser(options) {
+			let [request] = this.makeRequest('POST', '/users/new', options);
+			request = await request;
+			return await request.json();
+		},
+		async editUser(id, options) {
+			let [request] = this.makeRequest('PATCH', `/users/${id}`, options);
+			request = await request;
+			return await request.json();
+		},
+		async deleteUser(id) {
+			let [request] = this.makeRequest('DELETE', `/users/${id}`);
 			request = await request;
 			return await request.json();
 		},
