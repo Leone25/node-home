@@ -152,14 +152,4 @@ class HttpDevice extends BaseDevice {
             }
         });
     }
-
-    toJSON() {
-        return {
-            id: this.deviceInfo.id,
-            name: this.deviceInfo.name,
-            schema: this.schema,
-            state: this.state,
-            isOnline: this.isOnline,
-        };
-    }
 }

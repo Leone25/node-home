@@ -16,7 +16,7 @@
 		<v-list-item 
 			title="Devices"
 			subtitle="Connect, edit and remove devices"
-			prepend-icon="mdi-wrench"
+			prepend-icon="mdi-lamps"
 			to="/settings/devices"
 		/>
 		<v-list-item 

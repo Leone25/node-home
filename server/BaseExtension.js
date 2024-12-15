@@ -21,6 +21,9 @@ export default class BaseExtension extends EventEmitter {
 export class BaseDevice extends EventEmitter {
     constructor() {
         super();
+		this.brand = 'Generic'; // this is just data for the UI
+		this.model = 'Generic'; // this is just data for the UI
+
         this.isMounted = false;
     }
 
@@ -156,5 +159,15 @@ export class BaseDevice extends EventEmitter {
             }
         }
         return result;
+    }
+
+    toJSON() {
+        return {
+            id: this.deviceInfo.id,
+            name: this.deviceInfo.name,
+            schema: this.schema,
+            state: this.state,
+            isOnline: this.isOnline,
+        };
     }
 }
