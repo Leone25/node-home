@@ -41,7 +41,7 @@ export default class WebUI extends BaseExtension {
         
         this.loggedIn = Router({ mergeParams: true });
         
-        this.loggedIn.use((req, res, next) => {
+        function auth((req, res, next) => {
             if (!req.session) {
                 res.status(401).json({ error: "Unauthorized" });
                 return;
@@ -55,14 +55,14 @@ export default class WebUI extends BaseExtension {
             next();
         });
         
-        this.admin = Router({ mergeParams: true });
-        
-        this.admin.use((req, res, next) => {
-            if (req.session.isAdmin) {
-                next();
-            } else {
-                res.status(403).json({ error: "Unauthorized" });
-            }
+        authAdmin((req, res, next) => {
+            auth(req, res, () => {
+                if (req.session.isAdmin) {
+                    next();
+                } else {
+                    res.status(403).json({ error: "Unauthorized" });
+                }
+            });
         });
         // #endregion
 		// #region server
@@ -78,11 +78,11 @@ export default class WebUI extends BaseExtension {
 		});
 		// #endregion
         // #region user
-        this.loggedIn.get('/user/sessions/current', async (req, res) => {
+        this.router.get('/user/sessions/current', auth, async (req, res) => {
 			res.json(req.session);
 		});
 		
-		this.loggedIn.get('/user/sessions', async (req, res) => {
+		this.router.get('/user/sessions', auth, async (req, res) => {
             res.json(db.prepare('SELECT * FROM sessions WHERE user_id = ?').all(req.session.userId).map(s => {
 				let session = Session.fromDB(s).toJSON();
 				delete session.userId;
@@ -122,7 +122,7 @@ export default class WebUI extends BaseExtension {
             res.json({ id: id, token: token, user: user.name, expires: expires });
         });
         
-        this.loggedIn.post('/user/sessions/refresh', async (req, res) => {
+        this.router.post('/user/sessions/refresh', auth, async (req, res) => {
             let token = crypto.randomBytes(22).toString('base64');
             let expires = Date.now() + 30000 * 60 * 60 * 24; // 30 day
             
@@ -131,12 +131,12 @@ export default class WebUI extends BaseExtension {
             res.json({ id: req.session.deviceId, token: token, user: req.session.name, expires: expires });
         });
         
-        this.loggedIn.delete('/user/sessions', async (req, res) => {
+        this.router.delete('/user/sessions', auth, async (req, res) => {
             db.prepare('DELETE FROM sessions WHERE id = ?').run(req.session.userId);
             res.json({ success: true });
         });
 
-        this.loggedIn.delete('/user/sessions/:id', async (req, res) => {
+        this.router.delete('/user/sessions/:id', auth, async (req, res) => {
             let session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(req.params.id);
             if (!session) {
                 res.status(404).json({ error: "Session not found" });
@@ -151,7 +151,7 @@ export default class WebUI extends BaseExtension {
         });
         // #endregion
         // #region users
-        this.admin.get('/users', async (req, res) => {
+        this.router.get('/users', admin, async (req, res) => {
             let users = db.prepare('SELECT id, name, blocked FROM users').all();
 			let assignedRoles = db.prepare('SELECT * FROM users_roles').all();
 			let roles = db.prepare('SELECT * FROM roles').all();
@@ -215,11 +215,14 @@ export default class WebUI extends BaseExtension {
             res.json({ success: true, user: { id: id, name: req.body.username } });
         });
         
-        this.admin.get('/users/:id', async (req, res) => {
-            res.json(db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id));
+        this.router.get('/users/:id', admin async (req, res) => {
+            let user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+            if (!user) return res.status(404).json({ error: "User not found" });
+            let roles = db.prepare('SELECT * FROM users_roles JOIN roles ON users_roles.role_id = roles.id WHERE user_id = ? AND active = 1').all(session.user_id);
+            res.json({...user, roles});
         });
 
-		this.admin.patch('/users/:id', async (req, res) => {
+		this.router.patch('/users/:id', admin, async (req, res) => {
 			if ((!req.body.username || req.body.username.length == 0) && (!req.body.password || req.body.password.length == 0) && req.body.blocked === undefined && (!req.body.roles || req.body.roles.length === 0)) {
 				res.status(400).json({ error: "Missing name, password, blocked or roles" });
 				return;
@@ -260,44 +263,14 @@ export default class WebUI extends BaseExtension {
 
 			res.json({ success: true });
 		});
-        
-        this.admin.post('/users/:id/block', async (req, res) => {
-            db.prepare('UPDATE users SET blocked = 1 WHERE id = ?').run(req.params.id);
-            res.json({ success: true });
-        });
-        
-        this.admin.post('/users/:id/unblock', async (req, res) => {
-            db.prepare('UPDATE users SET blocked = 0 WHERE id = ?').run(req.params.id);
-            res.json({ success: true });
-        });
-        
-        this.admin.get('/users/:id/roles', async (req, res) => {
-            res.json(db.prepare('SELECT * FROM users_roles WHERE user_id = ?').all(req.params.id));
-        });
-        
-        this.admin.patch('/users/:id/roles', async (req, res) => {
-            if (!req.body.roles) {
-                res.status(400).json({ error: "Missing roles" });
-                return;
-            }
-            
-            for (let role in req.body.roles) {
-                if (req.body.roles[role] === true) {
-                    db.prepare('INSERT OR IGNORE INTO users_roles (user_id, role_id, active) VALUES (?, ?, 1)').run(req.params.id, role);
-                } else if (req.body.roles[role] === false) {
-                    db.prepare('DELETE FROM users_roles WHERE user_id = ? AND role_id = ?').run(req.params.id, role);
-                }
-            }
-            res.json({ success: true });
-        });
 
-		this.admin.delete('/users/:id', async (req, res) => {
+		this.router.delete('/users/:id', admin, async (req, res) => {
 			db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
 			res.json({ success: true });
 		});
         // #endregion
         // #region roles
-        this.admin.get('/roles', async (req, res) => {
+        this.router.get('/roles', admin, async (req, res) => {
             let result = db.prepare('SELECT roles.*, COUNT(users_roles.user_id) AS users FROM roles LEFT JOIN users_roles ON roles.id = users_roles.role_id GROUP BY roles.id').all();
 			res.json(result.map(r => {
 				return {
@@ -309,7 +282,7 @@ export default class WebUI extends BaseExtension {
 			}));
         });
         
-        this.admin.get('/roles/:id', async (req, res) => {
+        this.router.get('/roles/:id', admin, async (req, res) => {
             let role = db.prepare('SELECT * FROM roles WHERE id = ?').get(req.params.id);
 			let result = {
 				id: role.id,
@@ -320,7 +293,7 @@ export default class WebUI extends BaseExtension {
             res.json(result);
         });
         
-        this.admin.patch('/roles/:id', async (req, res) => {
+        this.router.patch('/roles/:id', admin, async (req, res) => {
             if (!req.body.name && !req.body.canBeToggled) {
                 res.status(400).json({ error: "Missing name or canBeToggled" });
                 return;
@@ -330,7 +303,7 @@ export default class WebUI extends BaseExtension {
             res.json({ success: true });
         });
         
-        this.admin.post('/roles/new', async (req, res) => {
+        this.router.post('/roles/new', admin, async (req, res) => {
             if (!req.body.name || !req.body.canBeToggled) {
                 res.status(400).json({ error: "Missing name or canBeToggled" });
                 return;
@@ -341,7 +314,7 @@ export default class WebUI extends BaseExtension {
             res.json({ success: true, role: { id: id, name: req.body.name, canBeToggled: req.body.canBeToggled } });
         });
         
-        this.admin.delete('/roles/:id', async (req, res) => {
+        this.router.delete('/roles/:id', admin, async (req, res) => {
             db.prepare('DELETE FROM roles WHERE id = ?').run(req.params.id);
             res.json({ success: true });
         });
@@ -357,15 +330,15 @@ export default class WebUI extends BaseExtension {
         }); // TODO: mirror this to a raw TCP endpoint for better efficiency when polling
         // #endregion
         // #region devices
-        this.loggedIn.get('/devices', async (req, res) => {
+        this.router.get('/devices', auth, async (req, res) => {
             res.json(core.getDevices());
         });
 
-        this.loggedIn.get('/devices/:id', async (req, res) => {
+        this.router.get('/devices/:id', auth, async (req, res) => {
             res.json(core.getDevice(req.params.id));
         });
 
-        this.loggedIn.post('/devices/:id/state', async (req, res) => {
+        this.router.post('/devices/:id/state', auth, async (req, res) => {
             if (!req.body.state) {
                 res.status(400).json({ error: "Missing state" });
                 return;
@@ -374,11 +347,11 @@ export default class WebUI extends BaseExtension {
             res.json({ success: core.setDeviceState(req.params.id, req.body.state) });
         });
 
-        this.admin.get('/devices/new', async (req, res) => {
+        this.router.get('/devices/new', admin, async (req, res) => {
             res.json(core.getDevicesToPair());
         });
 
-        this.admin.post('/devices/new', async (req, res) => {
+        this.router.post('/devices/new', admin, async (req, res) => {
             if (!req.body.type) {
                 res.status(400).json({ error: "Missing extension" });
                 return;
@@ -392,9 +365,6 @@ export default class WebUI extends BaseExtension {
             }
         });
         // #endregion
-
-        this.router.use(this.loggedIn);
-        this.loggedIn.use(this.admin);
     }
 
     async mount() {
@@ -453,6 +423,10 @@ export default class WebUI extends BaseExtension {
     async sendNotification(notification) {
         //
     }
+}
+
+class User {
+    
 }
 
 class Session {

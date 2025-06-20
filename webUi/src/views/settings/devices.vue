@@ -10,7 +10,6 @@ export default {
 			search: '',
 			loading: false,
 			error: null,
-			creatingDialog: false,
 			editingDialog: false,
 			deleteDialog: false,
 		}
@@ -54,7 +53,7 @@ export default {
 	<template #no-data>
 		<v-sheet class="pa-4">
 			<p class="mb-4">No devices found</p>
-			<v-btn @click="creatingDialog = true" color="primary" prepend-icon="mdi-plus">Create Device</v-btn>
+			<v-btn to="/settings/devices/new" color="primary" prepend-icon="mdi-plus">Create Device</v-btn>
 		</v-sheet>
 	</template>
 	</v-data-table-virtual>

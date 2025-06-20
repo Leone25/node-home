@@ -109,6 +109,11 @@ export const useServer = defineStore('server', {
 			let [request] = this.makeRequest('GET', '/devices');
 			request = await request;
 			return await request.json();
-		}
+		},
+		async getPairableDevices() {
+			let [request] = this.makeRequest('GET', '/devices/new');
+			request = await request;
+			return await request.json();
+		},
 	}
 });
