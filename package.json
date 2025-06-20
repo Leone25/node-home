@@ -15,7 +15,7 @@
   "license": "MIT",
   "workspaces": [
     "server",
-    "client"
+    "webUi"
   ],
   "devDependencies": {
     "concurrently": "^8.0.1"

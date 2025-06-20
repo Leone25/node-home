@@ -39,9 +39,7 @@ export default class WebUI extends BaseExtension {
 			next();
         });
         
-        this.loggedIn = Router({ mergeParams: true });
-        
-        function auth((req, res, next) => {
+        function auth(req, res, next) {
             if (!req.session) {
                 res.status(401).json({ error: "Unauthorized" });
                 return;
@@ -53,9 +51,9 @@ export default class WebUI extends BaseExtension {
             }
             
             next();
-        });
+        };
         
-        authAdmin((req, res, next) => {
+        function admin(req, res, next) {
             auth(req, res, () => {
                 if (req.session.isAdmin) {
                     next();
@@ -63,7 +61,7 @@ export default class WebUI extends BaseExtension {
                     res.status(403).json({ error: "Unauthorized" });
                 }
             });
-        });
+        };
         // #endregion
 		// #region server
 		this.router.get('/ping', async (req, res) => {
@@ -215,7 +213,7 @@ export default class WebUI extends BaseExtension {
             res.json({ success: true, user: { id: id, name: req.body.username } });
         });
         
-        this.router.get('/users/:id', admin async (req, res) => {
+        this.router.get('/users/:id', admin, async (req, res) => {
             let user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
             if (!user) return res.status(404).json({ error: "User not found" });
             let roles = db.prepare('SELECT * FROM users_roles JOIN roles ON users_roles.role_id = roles.id WHERE user_id = ? AND active = 1').all(session.user_id);

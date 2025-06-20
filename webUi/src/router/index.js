@@ -23,7 +23,7 @@ const router = createRouter({
 			children: [
 				{
 					path: '',
-					name: 'settings',
+					name: 'settings-root',
 					component: () => import('../views/settings/root.vue'),
 				},
 				{
