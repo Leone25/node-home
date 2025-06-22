@@ -1,4 +1,5 @@
 import { Router } from "express";
+import * as v from "valibot";
 
 import { db } from "../index.js";
 
@@ -52,7 +53,8 @@ router.use((req, res, next) => {
 
 for (const routeId in routes) {
 	let route = routes[routeId];
-	router[route.method?.toLowerCase() || "get"](
+	route.method = route.method?.toLowerCase() || "get";
+	router[route.method](
 		route.route,
 		(req, res, next) => {
 			if (route.auth || route.admin) {
@@ -72,6 +74,15 @@ for (const routeId in routes) {
 						return;
 					}
 				}
+			}
+			if (['post', 'put', 'patch'].includes(route.method) && !route.unsafeBody) {
+				if (!route.body) res.status(500).json({ error: "Missing route body schema", solution: "Either specify a route.body at this endpoint or disable safe body with route.unsafeBody"});
+				let validated = v.safeParse(route.body, req.body);
+				if (!validated.success) {
+					res.status(400).json({ error: "Bad request", issues: validated.issues.map(i => i.message) });
+					return;
+				}
+				req.body = validated.output;
 			}
 			next();
 		},

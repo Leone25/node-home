@@ -1,3 +1,7 @@
+import bcrypt from "bcrypt";
+import crypto from "node:crypto";
+import * as v from "valibot";
+
 import { db } from "../index.js";
 import { Session } from "./index.js";
 
@@ -33,6 +37,10 @@ export const userSessions = {
 export const userSessionsNew = {
 	method: "POST",
 	route: "/user/sessions",
+	body: v.object({
+		username: v.string(),
+		password: v.string(),
+	}),
 	async handler(req, res) {
 		// AKA login
 		if (!req.body.username || !req.body.password) {

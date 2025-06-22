@@ -1,7 +1,5 @@
 import BaseExtension from "./BaseExtension.js";
 import { Router } from "express";
-import bcrypt from "bcrypt";
-import crypto from "node:crypto";
 import fs from "fs/promises";
 
 import { argv, app, core, db } from "./index.js";
