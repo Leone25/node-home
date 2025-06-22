@@ -1,21 +1,21 @@
 {
-    "dependencies": {
-        "bcrypt": "^5.1.1",
-        "better-sqlite3": "^11.1.2",
-        "express": "^4.19.2",
-        "express-ws": "^5.0.2",
+	"dependencies": {
+		"bcrypt": "^5.1.1",
+		"better-sqlite3": "^11.1.2",
+		"express": "^4.19.2",
+		"express-ws": "^5.0.2",
 		"socket.io": "^4.7.5",
-        "node-schedule": "^2.1.1",
+		"node-schedule": "^2.1.1",
 		"uuid": "^10.0.0",
 		"yargs": "^17.7.2"
-    },
-    "devDependencies": {
-        "nodemon": "^3.1.3"
-    },
-    "scripts": {
-        "dev": "nodemon index.js",
-        "start": "node index.js"
-    },
+	},
+	"devDependencies": {
+		"nodemon": "^3.1.3"
+	},
+	"scripts": {
+		"dev": "nodemon index.js",
+		"start": "node index.js"
+	},
 	"nodemonConfig": {
 		"ignore": [
 			"db.sqlite"

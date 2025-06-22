@@ -1,5 +1,5 @@
 <script setup>
-import { RouterView } from 'vue-router';
+import { RouterView } from "vue-router";
 </script>
 
 <template>
@@ -8,7 +8,7 @@ import { RouterView } from 'vue-router';
 			<router-view v-slot="{ Component, route }">
 				<v-scroll-x-reverse-transition mode="out-in">
 					<v-sheet :key="route.params" class="position-relative h-100">
-						<component :is="Component"/>
+						<component :is="Component" />
 					</v-sheet>
 				</v-scroll-x-reverse-transition>
 			</router-view>

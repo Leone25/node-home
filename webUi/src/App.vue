@@ -1,21 +1,20 @@
 <script setup>
-import { RouterLink, RouterView } from 'vue-router';
-import { useServer } from '@/stores/server.js';
-import { mapState, mapActions } from 'pinia';
+import { RouterLink, RouterView } from "vue-router";
+import { useServer } from "@/stores/server.js";
+import { mapState, mapActions } from "pinia";
 </script>
 <script>
 export default {
 	data() {
-		return {
-		};
+		return {};
 	},
 	computed: {
-		...mapState(useServer, ['serverState']),
+		...mapState(useServer, ["serverState"]),
 	},
 	methods: {
-		...mapActions(useServer, ['getServerState', 'verifySession']),
+		...mapActions(useServer, ["getServerState", "verifySession"]),
 	},
-}
+};
 </script>
 <template>
 	<v-app>

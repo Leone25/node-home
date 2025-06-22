@@ -1,23 +1,25 @@
 {
-  "name": "node-home",
-  "version": "0.1.0",
-  "description": "Home automation with node.js",
-  "main": "index.js",
-  "scripts": {
-    "webUi:dev": "cd webUi && npm run dev",
+	"name": "node-home",
+	"version": "0.1.0",
+	"description": "Home automation with node.js",
+	"main": "index.js",
+	"scripts": {
+		"webUi:dev": "cd webUi && npm run dev",
 		"webUi:build": "cd webUi && npm run build",
 		"server:dev": "cd server && npm run dev",
 		"server:start": "cd server && npm run start",
 		"dev": "concurrently --names \"SERVER,WEB UI\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run server:dev\" \"npm run webUi:dev\"",
-		"start": "npm run webUi:build && npm run backend:start"
-  },
-  "author": "Enrico",
-  "license": "MIT",
-  "workspaces": [
-    "server",
-    "webUi"
-  ],
-  "devDependencies": {
-    "concurrently": "^8.0.1"
-  }
+		"start": "npm run webUi:build && npm run backend:start",
+		"lint": "prettier --write ."
+	},
+	"author": "Enrico",
+	"license": "MIT",
+	"workspaces": [
+		"server",
+		"webUi"
+	],
+	"devDependencies": {
+		"concurrently": "^8.0.1",
+		"prettier": "^3.5.3"
+	}
 }

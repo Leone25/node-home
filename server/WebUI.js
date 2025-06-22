@@ -1,500 +1,113 @@
-import BaseExtension from './BaseExtension.js';
-import { Router } from 'express';
-import bcrypt from 'bcrypt';
+import BaseExtension from "./BaseExtension.js";
+import { Router } from "express";
+import bcrypt from "bcrypt";
 import crypto from "node:crypto";
-import fs from 'fs/promises';
+import fs from "fs/promises";
 
-import { argv, app, core, db } from './index.js';
+import { argv, app, core, db } from "./index.js";
+
+import api from "./api/index.js";
 
 export default class WebUI extends BaseExtension {
-    constructor() {
-        super();
+	constructor() {
+		super();
 
 		this.serverState = {};
-        
-        // #region router setup
-        this.router = Router({ mergeParams: true });
-        
-        this.router.use((req, res, next) => {
-            if (!req.headers.authorization) {
-                next();
-                return;
-            }
-            
-            let session = db.prepare('SELECT sessions.id AS device_id, * FROM sessions JOIN users ON sessions.user_id = users.id WHERE token = ?').get(req.headers.authorization);
-            if (!session) {
-                next();
-                return;
-            }
+	}
 
-            if (session.expires < Date.now()) {
-                db.prepare('DELETE FROM sessions WHERE token = ?').run(req.headers.authorization);
-                next();
-                return;
-            }
-            
-            let roles = db.prepare('SELECT * FROM users_roles JOIN roles ON users_roles.role_id = roles.id WHERE user_id = ? AND active = 1').all(session.user_id);
-            req.session = Session.fromDB(session, roles);
+	async mount() {
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, password TEXT, blocked INTEGER)`,
+		).run();
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT, token TEXT, expires INTEGER, description TEXT, has_undelivered_notifications INTEGER, FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE, UNIQUE(token))`,
+		).run();
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS roles (id TEXT PRIMARY KEY, name TEXT, can_be_toggled INTEGER)`,
+		).run();
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS users_roles (user_id TEXT, role_id TEXT, active INTEGER, PRIMARY KEY(user_id, role_id), FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE CASCADE)`,
+		).run();
+		db.prepare(
+			`INSERT OR IGNORE INTO roles (id, name, can_be_toggled) VALUES ('admin', 'Administrator', 0)`,
+		).run();
+		db.prepare(
+			`INSERT OR IGNORE INTO roles (id, name, can_be_toggled) VALUES ('user', 'User', 0)`,
+		).run();
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, type TEXT, title TEXT, message TEXT, time INTEGER, extra TEXT, deleted INTEGER DEFAULT 0)`,
+		).run();
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS notifications_to (notification_id TEXT, user_id TEXT, viewed INTEGER, FOREIGN KEY(notification_id) REFERENCES notifications(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE, PRIMARY KEY(notification_id, user_id))`,
+		).run();
+		db.prepare(
+			`CREATE TABLE IF NOT EXISTS notifications_delivery (notification_id TEXT, user_id TEXT, session_id TEXT, delivered INTEGER, FOREIGN KEY(notification_id, user_id) REFERENCES notifications_to(notification_id, user_id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(session_id) REFERENCES sessions(id) ON UPDATE CASCADE ON DELETE CASCADE, PRIMARY KEY(notification_id, user_id, session_id))`,
+		).run();
+		db.prepare(
+			`CREATE TRIGGER IF NOT EXISTS notifications_to_insert AFTER INSERT ON notifications_to BEGIN INSERT INTO notifications_delivery (notification_id, user_id, session_id, delivered) VALUES (NEW.notification_id, NEW.user_id, (SELECT id FROM sessions WHERE user_id = NEW.user_id), 0); END`,
+		).run();
+		db.prepare(
+			`CREATE TRIGGER IF NOT EXISTS notifications_to_update AFTER UPDATE ON notifications_to BEGIN UPDATE notifications_delivery SET delivered = 0 WHERE notification_id = NEW.notification_id AND user_id = NEW.user_id; END`,
+		).run();
+		db.prepare(
+			`CREATE TRIGGER IF NOT EXISTS notifications_delivery_update AFTER UPDATE ON notifications_delivery BEGIN UPDATE sessions SET has_undelivered_notifications = (SELECT COUNT(*) FROM notifications_delivery WHERE session_id = NEW.session_id AND delivered = 0) WHERE id = NEW.session_id; END`,
+		).run();
+		db.prepare(
+			`CREATE TRIGGER IF NOT EXISTS notifications_delivery_insert AFTER INSERT ON notifications_delivery BEGIN UPDATE sessions SET has_undelivered_notifications = (SELECT COUNT(*) FROM notifications_delivery WHERE session_id = NEW.session_id AND delivered = 0) WHERE id = NEW.session_id; END`,
+		).run();
+		db.prepare(
+			`CREATE TRIGGER IF NOT EXISTS notifications_delivery_delete AFTER DELETE ON notifications_delivery BEGIN UPDATE sessions SET has_undelivered_notifications = (SELECT COUNT(*) FROM notifications_delivery WHERE session_id = OLD.session_id AND delivered = 0) WHERE id = OLD.session_id; END`,
+		).run();
 
-			next();
-        });
-        
-        function auth(req, res, next) {
-            if (!req.session) {
-                res.status(401).json({ error: "Unauthorized" });
-                return;
-            }
-            
-            if (req.session.blocked) {
-                res.status(423).json({ error: "User blocked" });
-                return;
-            }
-            
-            next();
-        };
-        
-        function admin(req, res, next) {
-            auth(req, res, () => {
-                if (req.session.isAdmin) {
-                    next();
-                } else {
-                    res.status(403).json({ error: "Unauthorized" });
-                }
-            });
-        };
-        // #endregion
-		// #region server
-		this.router.get('/ping', async (req, res) => {
-			res.json({ success: true });
-		});
-		this.router.get('/server/state', async (req, res) => {
-			let hasUsers = db.prepare('SELECT * FROM users LIMIT 1').get();
-			res.json({
-				...this.serverState,
-				hasUsers: !!hasUsers,
+		db.prepare(`INSERT OR IGNORE INTO db_version (id, version) VALUES ('webui', 1)`).run();
+
+		app.use(
+			"/api/v1",
+			(req, res, next) => {
+				req.serverState = this.serverState;
+				next();
+			},
+			api,
+		);
+
+		if (argv.prod) {
+			app.use("/", express.static("../webUi/dist"));
+			app.use((req, res) => {
+				res.sendFile("../webUi/dist/index.html");
 			});
-		});
-		// #endregion
-        // #region user
-        this.router.get('/user/sessions/current', auth, async (req, res) => {
-			res.json(req.session);
-		});
-		
-		this.router.get('/user/sessions', auth, async (req, res) => {
-            res.json(db.prepare('SELECT * FROM sessions WHERE user_id = ?').all(req.session.userId).map(s => {
-				let session = Session.fromDB(s).toJSON();
-				delete session.userId;
-				delete session.name;
-				delete session.blocked;
-				delete session.roles;
-				delete session.isAdmin;
-				return session;
-			}));
-        });
-
-        this.router.post('/user/sessions/new', async (req, res) => { // AKA login
-            if (!req.body.username || !req.body.password) {
-                res.status(400).json({ error: "Missing username or password" });
-                return;
-            }
-
-            let user = db.prepare('SELECT * FROM users WHERE name = ?').get(req.body.username);
-            if (!user) {
-                res.status(401).json({ error: "Invalid username" });
-                return;
-            }
-
-            if (!(await bcrypt.compare(req.body.password, user.password))) {
-				await new Promise(resolve => setTimeout(resolve, 1000)); // delay to prevent brute force
-                res.status(401).json({ error: "Invalid password" });
-                return;
-            }
-
-            // trandom string
-            let id = crypto.randomBytes(8).toString('hex'); // short id used for session identifier
-            let token = crypto.randomBytes(22).toString('base64'); // token used for authentication
-            let expires = Date.now() + 30000 * 60 * 60 * 24; // 30 day
-
-            db.prepare('INSERT INTO sessions (id, user_id, token, expires, description) VALUES (?, ?, ?, ?, ?)').run(id, user.id, token, expires, req.body.description || req.headers['user-agent']);
-
-            res.json({ id: id, token: token, user: user.name, expires: expires });
-        });
-        
-        this.router.post('/user/sessions/refresh', auth, async (req, res) => {
-            let token = crypto.randomBytes(22).toString('base64');
-            let expires = Date.now() + 30000 * 60 * 60 * 24; // 30 day
-            
-            db.prepare('UPDATE sessions SET token = ?, expires = ? WHERE id = ?').run(token, expires, req.session.deviceId);
-            
-            res.json({ id: req.session.deviceId, token: token, user: req.session.name, expires: expires });
-        });
-        
-        this.router.delete('/user/sessions', auth, async (req, res) => {
-            db.prepare('DELETE FROM sessions WHERE id = ?').run(req.session.userId);
-            res.json({ success: true });
-        });
-
-        this.router.delete('/user/sessions/:id', auth, async (req, res) => {
-            let session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(req.params.id);
-            if (!session) {
-                res.status(404).json({ error: "Session not found" });
-                return;
-            }
-            if (session.user_id !== req.session.userId) {
-                res.status(403).json({ error: "Unauthorized" });
-                return;
-            }
-            db.prepare('DELETE FROM sessions WHERE id = ?').run(req.params.id);
-            res.json({ success: true });
-        });
-        // #endregion
-        // #region users
-        this.router.get('/users', admin, async (req, res) => {
-            let users = db.prepare('SELECT id, name, blocked FROM users').all();
-			let assignedRoles = db.prepare('SELECT * FROM users_roles').all();
-			let roles = db.prepare('SELECT * FROM roles').all();
-			res.json(users.map(u => {
-				let userRoles = assignedRoles.filter(r => r.user_id === u.id).map(r => {
-					let role = roles.find(role => role.id === r.role_id);
-					return {
-						id: role.id,
-						name: role.name,
-						canBeToggled: role.can_be_toggled == 1,
-						active: r.active == 1,
-					};
-				});
-				return {
-					id: u.id,
-					username: u.name,
-					blocked: u.blocked == 1,
-					roles: userRoles,
-				};
-			}));
-        });
-        
-        this.router.post('/users/new', async (req, res) => { // AKA register
-            let userExists = db.prepare('SELECT * FROM users LIMIT 1').get();
-            if (userExists) {
-                if (!req.session) {
-                    res.status(401).json({ error: "Unauthorized" });
-                    return;
-                }
-                if (!req.session.isAdmin) {
-                    res.status(403).json({ error: "Unauthorized" });
-                    return;
-                }
-            }
-            
-            if (!req.body.username || !req.body.password) {
-                res.status(400).json({ error: "Missing username or password" });
-                return;
-            }
-            
-            let user = db.prepare('SELECT * FROM users WHERE name = ?').get(req.body.username);
-            
-            if (user) {
-                res.status(409).json({ error: "User already exists" });
-                return;
-            }
-            
-            let id = crypto.randomBytes(8).toString('hex');
-            let password = await bcrypt.hash(req.body.password, 10);
-			let blocked = req.body.blocked ? 1 : 0;
-            
-            db.prepare('INSERT INTO users (id, name, password, blocked) VALUES (?, ?, ?, ?)').run(id, req.body.username, password, blocked);
-            if (!userExists) {
-                db.prepare('INSERT INTO users_roles (user_id, role_id, active) VALUES (?, \'admin\', 1)').run(id);
-            } else if (req.body.roles) {
-                for (let role of req.body.roles) {
-                    db.prepare('INSERT INTO users_roles (user_id, role_id, active) VALUES (?, ?, 1)').run(id, role);
-                }
-            } 
-            
-            res.json({ success: true, user: { id: id, name: req.body.username } });
-        });
-        
-        this.router.get('/users/:id', admin, async (req, res) => {
-            let user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
-            if (!user) return res.status(404).json({ error: "User not found" });
-            let roles = db.prepare('SELECT * FROM users_roles JOIN roles ON users_roles.role_id = roles.id WHERE user_id = ? AND active = 1').all(session.user_id);
-            res.json({...user, roles});
-        });
-
-		this.router.patch('/users/:id', admin, async (req, res) => {
-			if ((!req.body.username || req.body.username.length == 0) && (!req.body.password || req.body.password.length == 0) && req.body.blocked === undefined && (!req.body.roles || req.body.roles.length === 0)) {
-				res.status(400).json({ error: "Missing name, password, blocked or roles" });
-				return;
-			}
-
-			let user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
-			if (!user) {
-				res.status(404).json({ error: "User not found" });
-				return;
-			}
-
-			if (req.body.username && req.body.username.length != 0 && req.body.username !== user.name) {
-				db.prepare('UPDATE users SET name = ? WHERE id = ?').run(req.body.username, req.params.id);
-			}
-			if (req.body.password && req.body.password.length != 0) {
-				let password = await bcrypt.hash(req.body.password, 10);
-				db.prepare('UPDATE users SET password = ? WHERE id = ?').run(password, req.params.id);
-			}
-			if (req.body.blocked !== undefined) {
-				db.prepare('UPDATE users SET blocked = ? WHERE id = ?').run(req.body.blocked ? 1 : 0, req.params.id);
-			}
-			if (req.body.roles) {
-				let currentRoles = db.prepare('SELECT * FROM users_roles WHERE user_id = ?').all(req.params.id);
-				for (let role of req.body.roles) {
-					let currentRole = currentRoles.find(r => r.role_id === role);
-					if (currentRole) {
-						db.prepare('UPDATE users_roles SET active = 1 WHERE user_id = ? AND role_id = ?').run(req.params.id, role);
-					} else {
-						db.prepare('INSERT INTO users_roles (user_id, role_id, active) VALUES (?, ?, 1)').run(req.params.id, role);
-					}
-				}
-				for (let role of currentRoles) {
-					if (!req.body.roles.includes(role.role_id)) {
-						db.prepare('UPDATE users_roles SET active = 0 WHERE user_id = ? AND role_id = ?').run(req.params.id, role.role_id);
-					}
-				}
-			}
-
-			res.json({ success: true });
-		});
-
-		this.router.delete('/users/:id', admin, async (req, res) => {
-			db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
-			res.json({ success: true });
-		});
-        // #endregion
-        // #region roles
-        this.router.get('/roles', admin, async (req, res) => {
-            let result = db.prepare('SELECT roles.*, COUNT(users_roles.user_id) AS users FROM roles LEFT JOIN users_roles ON roles.id = users_roles.role_id GROUP BY roles.id').all();
-			res.json(result.map(r => {
-				return {
-					id: r.id,
-					name: r.name,
-					canBeToggled: r.can_be_toggled == 1,
-					users: r.users,
-				};
-			}));
-        });
-        
-        this.router.get('/roles/:id', admin, async (req, res) => {
-            let role = db.prepare('SELECT * FROM roles WHERE id = ?').get(req.params.id);
-			let result = {
-				id: role.id,
-				name: role.name,
-				canBeToggled: role.can_be_toggled == 1,
-			};
-            result.users = db.prepare('SELECT * FROM users_roles JOIN users ON users_roles.user_id = users.id WHERE role_id = ?').all(req.params.id);
-            res.json(result);
-        });
-        
-        this.router.patch('/roles/:id', admin, async (req, res) => {
-            if (!req.body.name && !req.body.canBeToggled) {
-                res.status(400).json({ error: "Missing name or canBeToggled" });
-                return;
-            }
-            
-            db.prepare('UPDATE roles SET name = ?, can_be_toggled = ? WHERE id = ?').run(req.body.name, req.body.canBeToggled, req.params.id);
-            res.json({ success: true });
-        });
-        
-        this.router.post('/roles/new', admin, async (req, res) => {
-            if (!req.body.name || !req.body.canBeToggled) {
-                res.status(400).json({ error: "Missing name or canBeToggled" });
-                return;
-            }
-            
-            let id = req.body.id || req.body.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-            db.prepare('INSERT INTO roles (id, name, can_be_toggled) VALUES (?, ?, ?)').run(id, req.body.name, req.body.canBeToggled);
-            res.json({ success: true, role: { id: id, name: req.body.name, canBeToggled: req.body.canBeToggled } });
-        });
-        
-        this.router.delete('/roles/:id', admin, async (req, res) => {
-            db.prepare('DELETE FROM roles WHERE id = ?').run(req.params.id);
-            res.json({ success: true });
-        });
-        // #endregion
-        // #region notifications
-        this.router.get('/notifications/new', async (req, res) => { // this is an unsecure endpoint that only tells the client if there are new notifications, to retreive them the client must use /notifications with authorization
-            let notifications = db.prepare('SELECT * FROM notifications_delivery JOIN notifications_to ON notifications_delivery.notification_id = notifications_to.notification_id WHERE session_id = ? AND delivered = 0 AND knows_read != read LIMIT 1').get(req.headers.deviceId || req.session.deviceId);
-            if (!notifications) {
-                res.json({ updates: false });
-            } else {
-                res.json({ updates: true });
-            }
-        }); // TODO: mirror this to a raw TCP endpoint for better efficiency when polling
-        // #endregion
-        // #region devices
-        this.router.get('/devices', auth, async (req, res) => {
-            res.json(core.getDevices());
-        });
-
-        this.router.get('/devices/:id', auth, async (req, res) => {
-            res.json(core.getDevice(req.params.id));
-        });
-
-        this.router.post('/devices/:id/state', auth, async (req, res) => {
-            if (!req.body.state) {
-                res.status(400).json({ error: "Missing state" });
-                return;
-            }
-
-            res.json({ success: core.setDeviceState(req.params.id, req.body.state) });
-        });
-
-        this.router.get('/devices/new', admin, async (req, res) => {
-            res.json(core.getDevicesToPair());
-        });
-
-        this.router.post('/devices/new', admin, async (req, res) => {
-            if (!req.body.type) {
-                res.status(400).json({ error: "Missing extension" });
-                return;
-            }
-
-            try {
-                let device = await core.pairDevice(req.body.type, req.body.data);
-                res.json({ success: true, device: device });
-            } catch (e) {
-                res.status(400).json({ error: e.message });
-            }
-        });
-        // #endregion
-    }
-
-    async mount() {
-        db.prepare(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, password TEXT, blocked INTEGER)`).run();
-        db.prepare(`CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT, token TEXT, expires INTEGER, description TEXT, has_undelivered_notifications INTEGER, FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE, UNIQUE(token))`).run();
-        db.prepare(`CREATE TABLE IF NOT EXISTS roles (id TEXT PRIMARY KEY, name TEXT, can_be_toggled INTEGER)`).run();
-        db.prepare(`CREATE TABLE IF NOT EXISTS users_roles (user_id TEXT, role_id TEXT, active INTEGER, PRIMARY KEY(user_id, role_id), FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(role_id) REFERENCES roles(id) ON UPDATE CASCADE ON DELETE CASCADE)`).run();
-        db.prepare(`INSERT OR IGNORE INTO roles (id, name, can_be_toggled) VALUES ('admin', 'Administrator', 0)`).run();
-        db.prepare(`INSERT OR IGNORE INTO roles (id, name, can_be_toggled) VALUES ('user', 'User', 0)`).run();
-        db.prepare(`CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, type TEXT, title TEXT, message TEXT, time INTEGER, extra TEXT, deleted INTEGER DEFAULT 0)`).run();
-        db.prepare(`CREATE TABLE IF NOT EXISTS notifications_to (notification_id TEXT, user_id TEXT, viewed INTEGER, FOREIGN KEY(notification_id) REFERENCES notifications(id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE, PRIMARY KEY(notification_id, user_id))`).run();
-        db.prepare(`CREATE TABLE IF NOT EXISTS notifications_delivery (notification_id TEXT, user_id TEXT, session_id TEXT, delivered INTEGER, FOREIGN KEY(notification_id, user_id) REFERENCES notifications_to(notification_id, user_id) ON UPDATE CASCADE ON DELETE CASCADE, FOREIGN KEY(session_id) REFERENCES sessions(id) ON UPDATE CASCADE ON DELETE CASCADE, PRIMARY KEY(notification_id, user_id, session_id))`).run();
-        db.prepare(`CREATE TRIGGER IF NOT EXISTS notifications_to_insert AFTER INSERT ON notifications_to BEGIN INSERT INTO notifications_delivery (notification_id, user_id, session_id, delivered) VALUES (NEW.notification_id, NEW.user_id, (SELECT id FROM sessions WHERE user_id = NEW.user_id), 0); END`).run();
-        db.prepare(`CREATE TRIGGER IF NOT EXISTS notifications_to_update AFTER UPDATE ON notifications_to BEGIN UPDATE notifications_delivery SET delivered = 0 WHERE notification_id = NEW.notification_id AND user_id = NEW.user_id; END`).run();
-        db.prepare(`CREATE TRIGGER IF NOT EXISTS notifications_delivery_update AFTER UPDATE ON notifications_delivery BEGIN UPDATE sessions SET has_undelivered_notifications = (SELECT COUNT(*) FROM notifications_delivery WHERE session_id = NEW.session_id AND delivered = 0) WHERE id = NEW.session_id; END`).run();
-        db.prepare(`CREATE TRIGGER IF NOT EXISTS notifications_delivery_insert AFTER INSERT ON notifications_delivery BEGIN UPDATE sessions SET has_undelivered_notifications = (SELECT COUNT(*) FROM notifications_delivery WHERE session_id = NEW.session_id AND delivered = 0) WHERE id = NEW.session_id; END`).run();
-        db.prepare(`CREATE TRIGGER IF NOT EXISTS notifications_delivery_delete AFTER DELETE ON notifications_delivery BEGIN UPDATE sessions SET has_undelivered_notifications = (SELECT COUNT(*) FROM notifications_delivery WHERE session_id = OLD.session_id AND delivered = 0) WHERE id = OLD.session_id; END`).run();
-        
-        db.prepare(`INSERT OR IGNORE INTO db_version (id, version) VALUES ('webui', 1)`).run();
-
-        app.use('/api/v1', this.router);
-
-        if (argv.prod) {
-            app.use("/", express.static("../webUi/dist"));
-            app.use((req, res) => {
-                res.sendFile("../webUi/dist/index.html");
-            });
-        }
-
-		fs.readFile('../package.json', 'utf8').then(data => {
-			this.serverState.version = JSON.parse(data).version;
-		}).catch(() => {
-			this.serverState.version = undefined;
-		});
-		fs.readFile('../.git/HEAD', 'utf8').then(async data => {
-			data = data.toString().trim();
-			if (data.startsWith('ref: ')) {
-				data = (await fs.readFile(`../.git/${data.substring(5)}`, 'utf8')).toString().trim();
-			}
-			this.serverState.commit = data;
-		}).catch((err) => {
-			this.serverState.commit = undefined;
-		});
-
-        super.mount();
-    }
-
-    async unmount() {
-        app._router.stack = app._router.stack.filter(r => r.route && r.route.path !== '/api/v1');
-
-        // TODO remove prod routes
-
-        super.unmount();
-    }
-    
-    async sendNotification(notification) {
-        //
-    }
-}
-
-class User {
-    
-}
-
-class Session {
-	constructor(userId, name, deviceId, token, expires, description, hasUndeliveredNotifications, password, blocked, roles) {
-		this.userId = userId;
-		this.name = name;
-		this.deviceId = deviceId;
-		this.token = token;
-		this.expires = expires;
-		this.description = description;
-		this.hasUndeliveredNotifications = hasUndeliveredNotifications;
-		this.password = password;
-		this.blocked = blocked;
-		this.roles = roles;
-	}
-
-	static fromDB(data, roles) {
-		let params = [
-			data.user_id,
-			data.name,
-			data.device_id,
-			data.token,
-			data.expires,
-			data.description,
-			data.has_undelivered_notifications == 1,
-			data.password,
-			data.blocked == 1
-		];
-		if (roles) {
-			params.push(roles.map(r => {
-				return {
-					id: r.role_id,
-					name: r.name,
-					canBeToggled: r.can_be_toggled == 1,
-					active: r.active == 1,
-				}
-			}));
 		}
-		return new Session(...params);
+
+		fs.readFile("../package.json", "utf8")
+			.then(data => {
+				this.serverState.version = JSON.parse(data).version;
+			})
+			.catch(() => {
+				this.serverState.version = undefined;
+			});
+		fs.readFile("../.git/HEAD", "utf8")
+			.then(async data => {
+				data = data.toString().trim();
+				if (data.startsWith("ref: ")) {
+					data = (await fs.readFile(`../.git/${data.substring(5)}`, "utf8")).toString().trim();
+				}
+				this.serverState.commit = data;
+			})
+			.catch(err => {
+				this.serverState.commit = undefined;
+			});
+
+		super.mount();
 	}
 
-	get isAdmin() {
-		if (!this.roles) return false;
-		let role = this.roles.find(r => r.id === 'admin');
-		return role && role.active;
+	async unmount() {
+		app._router.stack = app._router.stack.filter(r => r.route && r.route.path !== "/api/v1");
+
+		// TODO remove prod routes
+
+		super.unmount();
 	}
 
-	get expiresIn() {
-		return this.expires - Date.now();
-	}
-
-	get expired() {
-		return this.expires < Date.now();
-	}
-
-	toJSON() {
-		let res = {
-			userId: this.userId,
-			name: this.name,
-			deviceId: this.deviceId,
-			expires: this.expires,
-			description: this.description,
-			hasUndeliveredNotifications: this.hasUndeliveredNotifications,
-			blocked: this.blocked,
-			isAdmin: this.isAdmin,
-			expiresIn: this.expiresIn,
-		};
-		if (this.roles) {
-			res.roles = this.roles;
-		}
-		return res;
+	async sendNotification(notification) {
+		//
 	}
 }

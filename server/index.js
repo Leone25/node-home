@@ -1,11 +1,11 @@
-import { createServer } from 'http';
-import express from 'express';
-import expressWs from 'express-ws';
-import { Server } from 'socket.io';
-import Sqlite3 from 'better-sqlite3';
+import { createServer } from "http";
+import express from "express";
+import expressWs from "express-ws";
+import { Server } from "socket.io";
+import Sqlite3 from "better-sqlite3";
 import yargs from "yargs";
 
-import config from './config.js';
+import config from "./config.js";
 
 export const argv = yargs(process.argv)
 	.option("prod", {
@@ -17,22 +17,21 @@ export const argv = yargs(process.argv)
 	.help()
 	.alias("help", "h").argv;
 
-import { Core } from './Core.js';
+import { Core } from "./Core.js";
 
 export const db = new Sqlite3(config.dbPath);
-db.pragma('foreign_keys = ON');
+db.pragma("foreign_keys = ON");
 export const app = express();
 expressWs(app);
 app.use(express.json());
 const httpServer = createServer(app);
-export const io = new Server(httpServer, { 
+export const io = new Server(httpServer, {
 	cors: {
 		origin: "*",
-	}, 
+	},
 });
 export const core = new Core();
 core.init();
-
 
 httpServer.listen(config.port, () => {
 	console.log("Server running on port " + config.port);

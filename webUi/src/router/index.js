@@ -1,59 +1,59 @@
-import { createRouter, createWebHistory } from 'vue-router'
-import home from '../views/home.vue'
+import { createRouter, createWebHistory } from "vue-router";
+import home from "../views/home.vue";
 
-import { useServer } from '@/stores/server';
+import { useServer } from "@/stores/server";
 
 const router = createRouter({
 	history: createWebHistory(import.meta.env.BASE_URL),
 	routes: [
 		{
-			path: '/',
-			name: 'home',
-			component: home
+			path: "/",
+			name: "home",
+			component: home,
 		},
 		{
-			path: '/login',
-			name: 'login',
-			component: () => import('../views/login.vue')
+			path: "/login",
+			name: "login",
+			component: () => import("../views/login.vue"),
 		},
 		{
-			path: '/settings',
-			name: 'settings',
-			component: () => import('../views/settings/container.vue'),
+			path: "/settings",
+			name: "settings",
+			component: () => import("../views/settings/container.vue"),
 			children: [
 				{
-					path: '',
-					name: 'settings-root',
-					component: () => import('../views/settings/root.vue'),
+					path: "",
+					name: "settings-root",
+					component: () => import("../views/settings/root.vue"),
 				},
 				{
-					path: 'devices',
-					name: 'settings-devices',
-					component: () => import('../views/settings/devices.vue'),
+					path: "devices",
+					name: "settings-devices",
+					component: () => import("../views/settings/devices.vue"),
 				},
 				{
-					path: 'devices/new',
-					name: 'settings-devices-new',
-					component: () => import('../views/settings/newDevice.vue'),
+					path: "devices/new",
+					name: "settings-devices-new",
+					component: () => import("../views/settings/newDevice.vue"),
 				},
 				{
-					path: 'users',
-					name: 'settings-users',
-					component: () => import('../views/settings/users.vue')
+					path: "users",
+					name: "settings-users",
+					component: () => import("../views/settings/users.vue"),
 				},
 				{
-					path: 'information',
-					name: 'settings-information',
-					component: () => import('../views/settings/information.vue')
-				}
-			]
+					path: "information",
+					name: "settings-information",
+					component: () => import("../views/settings/information.vue"),
+				},
+			],
 		},
 		{
-			path: '/setup',
-			name: 'setup',
-			component: () => import('../views/setup.vue')
-		}
-	]
+			path: "/setup",
+			name: "setup",
+			component: () => import("../views/setup.vue"),
+		},
+	],
 });
 
 /* await this.getServerState();
@@ -75,21 +75,21 @@ router.beforeEach(async (to, from) => {
 	}
 
 	if (server.isAuthenticated) {
-		if (to.name === 'login' || to.name === 'setup') {
-			return '/';
+		if (to.name === "login" || to.name === "setup") {
+			return "/";
 		}
 	} else {
 		if (server.serverState.hasUsers) {
-			if (to.name !== 'login') {
-				return '/login';
+			if (to.name !== "login") {
+				return "/login";
 			}
 		} else {
-			if (to.name !== 'setup') {
-				return '/setup';
+			if (to.name !== "setup") {
+				return "/setup";
 			}
 		}
 	}
 	return true;
 });
 
-export default router
+export default router;
